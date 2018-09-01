@@ -19,8 +19,7 @@ function [LL,dLL,d2LL] = cbNllFunctionRectLin(spkTimes,CBEM,CBEMtoOptimize, fitL
 %see the LaTeX file for the derivation
 
 %constants for numerical stability (divide by zero and stuff)
-EXP_MAX       = 35;  %exp(x) = exp(min(EXP_MAX,x))
-EXP_MIN       = -EXP_MAX;  %exp(x) = exp(min(EXP_MAX,x))
+EXP_MAX       = 500;  %exp(x) = exp(min(EXP_MAX,x))
 LOG_MIN       = 1e-300; % log(x) = log(max(LOG_MIN,x))
 POS_DENOM_MIN = 1e-15; %1/x = 1/max(POS_DENOM_MIN,x) where x>0 should hold
 
@@ -103,8 +102,8 @@ nexpl = exp(min(EXP_MAX,-l));
 
 r_h = CBEM.spikeNonlinearity.c*log(1+expl); 
 r = dt*r_h; %spike rate at each time
-r_nexp = exp(max(EXP_MIN,min(EXP_MAX,-r)));%r_nexp = max(1e-16,min(exp(-r),1e30));
-r_exp  = exp(max(EXP_MIN,min(EXP_MAX,r)));%r_exp  = max(1e-16,min(exp(r), 1e30));
+r_nexp = exp(min(EXP_MAX,-r));%r_nexp = max(1e-16,min(exp(-r),1e30));
+r_exp  = exp(min(EXP_MAX,r));%r_exp  = max(1e-16,min(exp(r), 1e30));
 sum_r  = sum(r);
 
 LL = sum(log(max(LOG_MIN, 1-r_nexp(spkTimes)))) + sum(r(spkTimes)) - sum_r; 
@@ -194,7 +193,7 @@ if(nargout > 1)
             q(spkTimes) = min(q1,q2);
             
             a = 1./(1+nexpl); 
-            qa = q.*a;
+            qa = q./(1+nexpl);%q.*a;
             
 %             n_M = spdiags([zeros(T,1) qa -1*ones(T,1)],[-1 0 1],T,T)\exc;
             n_M = spdiags([zeros(T,1) exc -1*ones(T,1)],[-1 0 1],T,T)\qa;
@@ -231,7 +230,7 @@ if(nargout > 1)
                 u2 = -dt*r_exp(spkTimes)./max(POS_DENOM_MIN,(r_exp(spkTimes ).*r_exp(spkTimes ) + 1 - 2*r_exp(spkTimes )));
                 u(spkTimes) = max(u1,u2);
                 
-                d = 1./(2+expl+nexpl);
+                d = a.*(1-a);%1./(2+expl+nexpl);
                 
                 %sq  = (q.*d + CBEM.spikeNonlinearity.c*(u.*a.^2));
                 sq = (q.*d + CBEM.spikeNonlinearity.c*(u.*a.^2));
@@ -346,7 +345,7 @@ if(nargout > 1)
                 u2 = -dt*r_exp(spkTimes)./max(POS_DENOM_MIN,(r_exp(spkTimes ).*r_exp(spkTimes ) + 1 - 2*r_exp(spkTimes )));
                 u(spkTimes) = max(u1,u2);
                 
-                d = 1./(2+expl+nexpl);
+                d = a.*(1-a);%1./(2+expl+nexpl);
                 sq = (q.*d + CBEM.spikeNonlinearity.c*(u.*a.^2)); %u.*a*CBEM_c is derivate of q, d is derivative of a
                 
             end
@@ -394,23 +393,23 @@ function h = CBEM_hess3(X,H,n_e,g_e,M)
 
 h = -(n_e.*(M\(g_e.*X)))'*H;
 
-function h = CBEM_hess2(X,Z,M_d,M_l,M_u, nM_g_ei,nM_m_e,nM_m_i,g_e,g_i,M)
-
-T = length(M_d);
-S = spdiags([M_d M_l M_u],[0 -1 1],T,T);
-H_0 = X'*(S\Z);
-
-
-H_1 = X'*(Z.*nM_g_ei);
-
-S2 = spdiags([M -1*ones(T,1)],[0 -1], T,T);
-H_2 = X'*(nM_m_e.*(S2\(g_i.*Z)));
-
-
-S3 = spdiags([M -1*ones(T,1)],[0 -1], T,T);
-H_3 = (nM_m_i.*(S3\(g_e.*X)))'*Z;
-
-h = H_0 - H_1 + H_2 + H_3;
+% function h = CBEM_hess2(X,Z,M_d,M_l,M_u, nM_g_ei,nM_m_e,nM_m_i,g_e,g_i,M)
+% 
+% T = length(M_d);
+% S = spdiags([M_d M_l M_u],[0 -1 1],T,T);
+% H_0 = X'*(S\Z);
+% 
+% 
+% H_1 = X'*(Z.*nM_g_ei);
+% 
+% S2 = spdiags([M -1*ones(T,1)],[0 -1], T,T);
+% H_2 = X'*(nM_m_e.*(S2\(g_i.*Z)));
+% 
+% 
+% S3 = spdiags([M -1*ones(T,1)],[0 -1], T,T);
+% H_3 = (nM_m_i.*(S3\(g_e.*X)))'*Z;
+% 
+% h = H_0 - H_1 + H_2 + H_3;
 
 
 function h = CBEM_hess4(X,Z,sq, nM_g_ei,nM_m_e,nM_m_i,g_e,g_i,M)

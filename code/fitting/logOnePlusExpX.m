@@ -19,11 +19,12 @@ if(nargout > 1)
     g = zeros(length(f),1)+1e-15;
     g(greaterT) = 1;
     
-    g(toFit) = ex./(1+ex);
+    nex = exp(-X(toFit));
+    g(toFit) = 1./(1+nex);
     
     if(nargout > 2)
         h = zeros(length(f),1);
-        h(toFit) = g(toFit)./(1+ex);
+        h(toFit) = g(toFit).*(1-g(toFit));
     end
 end
 
