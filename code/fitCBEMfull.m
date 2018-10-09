@@ -53,11 +53,15 @@ else
 
     nllFunc = @(Xvec) optimizationFunction(Xvec,CBEMp,CBEMtoOptimize,SpikeStim,spkHist,spikeTimes,ones(TT,1),{[],[]},{[],[]});
 
+    opts_grad = optimoptions('fminunc','Algorithm','quasi-newton','SpecifyObjectiveGradient',true,'Hessian','off','MaxIter',500,'Display','iter','FunctionTolerance',1e-6,'StepTolerance',1e-6);
     opts = optimoptions('fminunc','Algorithm','trust-region','SpecifyObjectiveGradient',true,'Hessian','on','MaxIter',500,'Display','iter','FunctionTolerance',1e-8,'StepTolerance',1e-8);
 
     initPoint = cbemStructToVector(CBEMp,CBEMtoOptimize);
 
     %%
+    fprintf('Fitting with gradient only...\n');
+    initPoint = fminunc(nllFunc,initPoint,opts_grad);
+    fprintf('Continuing fit with Hessian...\n');
     [finalPoint,nll] = fminunc(nllFunc,initPoint,opts);
 
     CBEMp = cbemVectorToStruct(finalPoint,CBEMp,CBEMtoOptimize);
