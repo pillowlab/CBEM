@@ -1,4 +1,4 @@
-function [LL,dLL,d2LL] = cbNllFunctionRectLin(spkTimes,CBEM,CBEMtoOptimize, fitLength, varargin) 
+function [LL,dLL,d2LL,V] = cbNllFunctionRectLin(spkTimes,CBEM,CBEMtoOptimize, fitLength, varargin) 
 
 %for a rectified linear spike rate nonlinearity
 % spkTimes = spk times

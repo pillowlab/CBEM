@@ -3,12 +3,12 @@
 % CBEM is the main structure
 % Xvec contains certain values for the CBEM parameters in vector form
 %  -CBEMtoOptimize says which values these are
-function [f, g, h] = optimizationFunction(Xvec,CBEM,CBEMtoOptimize,Stim,spkHist,spikeTimes,StimG,StimCE,StimCI)
+function [f, g, h,V] = optimizationFunction(Xvec,CBEM,CBEMtoOptimize,Stim,spkHist,spikeTimes,StimG,StimCE,StimCI)
 
 CBEM = cbemVectorToStruct(Xvec,CBEM,CBEMtoOptimize);
 
 if(isempty(Xvec))
-    display('Nothing selected to optimize (input Xvec is empty)')
+    fprintf('Nothing selected to optimize (input Xvec is empty)\n')
     error('Empty optimization problem');
 end
 
@@ -18,7 +18,9 @@ CBEMtoOptimize.initVoltage   = CBEM.E_l;
 
 
 
-if(nargout > 2)
+if(nargout > 3)
+    [f, g, h,V] = cbNllFunctionRectLin(spikeTimes,CBEM,CBEMtoOptimize, length(Xvec),spkHist,Stim,StimG,StimCE,StimCI);
+elseif(nargout > 2)
     [f, g, h] = cbNllFunctionRectLin(spikeTimes,CBEM,CBEMtoOptimize, length(Xvec),spkHist,Stim,StimG,StimCE,StimCI);
 elseif(nargout > 1)
     [f, g] = cbNllFunctionRectLin(spikeTimes,CBEM,CBEMtoOptimize, length(Xvec),spkHist,Stim,StimG,StimCE,StimCI);

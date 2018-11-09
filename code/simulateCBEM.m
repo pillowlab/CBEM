@@ -23,12 +23,20 @@ l_s_fit = zeros(TT,nConds);
 
 
 for cc = 1:nConds
-    if(CBEM.condType(cc) == 2)
+   
+
+    if(CBEM.condType(cc) == 2) 
+        if(isfield(CBEM,'k_temporal'))
+            f = CBEM.k_temporal{cc}*CBEM.k_spatial{cc}';
+            CBEM.k_s{cc} = [f(:);CBEM.k_baseline{cc}];
+        end
+
         %first, check if Stim needs and extra column of 1's
         if(size(Stim,2) + 1 == length(CBEM.k_s{cc}))
-            Stim = [Stim ones(TT,1)];
+            l_s_fit(:,cc) = [Stim ones(TT,1)]*CBEM.k_s{cc};
+        else
+            l_s_fit(:,cc) = Stim*CBEM.k_s{cc};
         end
-        l_s_fit(:,cc) = Stim*CBEM.k_s{cc};
         g_s_fit(:,cc) = CBEM.f_s{cc}(l_s_fit(:,cc),   CBEM.g_s_bar(cc));
     elseif(CBEM.condType(cc) == 1)
         error('Does not function with AHP currents yet');

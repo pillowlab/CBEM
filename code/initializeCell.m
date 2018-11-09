@@ -14,7 +14,7 @@ nSHfilters = 7+numShortSHFilts;%7+
 nInh = 1;
 nExc = 1;
 
-useLeakCondExc = true;
+useLeakCondExc = false;
 usePrior = true;
 
 CBEM = setupCBEMsimple(nLinearRFs,nSHfilters,dt,nInh,nExc,numShortSHFilts,useLeakCondExc,usePrior);
