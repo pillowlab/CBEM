@@ -5,7 +5,7 @@
 
 
 %%
-dt = 1e-4;
+% dt = 1e-4;
 
 nLinearRFs = 10;     %number of stimulus basis functions
 numShortSHFilts = 5; %each is 0.4ms long - used for refractory period

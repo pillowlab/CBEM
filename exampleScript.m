@@ -7,6 +7,8 @@ addpath code/utils
 %% load Stimulus X and spike train Y (Y is full vector of 1s and 0s)
 % example data provided is from a simulated CBEM (CBEM_true)
 
+dt = 1e-4; %important variable! bin size in seconds.
+
 load Data/example
 
 %% Initialize CBEM for fitting
