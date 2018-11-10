@@ -112,9 +112,15 @@ else
                 if(ff == 1)
                     %renormalizes for identifiability
                     spatial_rf  = reshape(CBEMp.k_s{ii}(1:end-1),[],CBEMp.stimFilterRank);
-                    sn =  sqrt(sum(spatial_rf.^2,1));
-                    CBEMp.k_temporal{ii} = CBEMp.k_temporal{ii}.*sn;
-                    CBEMp.k_spatial{ii}  = spatial_rf./sn;
+                    try 
+                        d = chol(spatial_rf'*spatial_rf);
+                        CBEMp.k_temporal{ii} = CBEMp.k_temporal{ii}*d';
+                        CBEMp.k_spatial{ii}  = spatial_rf/d;
+                    catch
+                        sn =  max(1e-4,sqrt(sum(spatial_rf.^2,1)));
+                        CBEMp.k_temporal{ii} = CBEMp.k_temporal{ii}.*sn;
+                        CBEMp.k_spatial{ii}  = spatial_rf./sn;
+                    end
                 elseif(ff == 2)
                     CBEMp.k_temporal{ii} = reshape(CBEMp.k_s{ii}(1:end-1),[],CBEMp.stimFilterRank);
                 end
