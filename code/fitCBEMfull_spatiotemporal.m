@@ -60,12 +60,12 @@ else
                 for ii = 1:2
                     CBEMp.k_s{ii} = [CBEMp.k_spatial{ii}(:); CBEMp.k_baseline{ii}];
                     if(isfield(CBEMp,'prior'))
-                        CBEMp.prior.k_s_sig{ii} = blkdiag(CBEMp.prior.k_s_lambda{ii}*kron(CBEMp.k_temporal{ii}'*CBEMp.k_temporal{ii},eye(size(CBEMp.k_spatial{ii},1))),1);
+                        CBEMp.prior.k_s_sig{ii} = blkdiag(CBEMp.prior.k_s_lambda{ii}*kron(CBEMp.k_temporal{ii}'*CBEMp.k_temporal{ii},eye(size(CBEMp.k_spatial{ii},1))),0);
                     end
-                    B_s = zeros(size(SpikeStim,2),CBEM.stimNumBasisVectors_temporal*CBEM.stimFilterRank);
-                    for jj = 1:CBEM.stimFilterRank
-                        idx = (jj-1)*CBEM.stimNumBasisVectors_spatial + (1:CBEM.stimNumBasisVectors_spatial);
-                        B_s(:,idx) = kron(eye(size(CBEM.k_spatial{ii},1)),CBEM.k_temporal{ii}(:,jj));
+                    B_s = zeros(size(SpikeStim,2),CBEMp.stimNumBasisVectors_temporal*CBEMp.stimFilterRank);
+                    for jj = 1:CBEMp.stimFilterRank
+                        idx = (jj-1)*CBEMp.stimNumBasisVectors_spatial + (1:CBEMp.stimNumBasisVectors_spatial);
+                        B_s(:,idx) = kron(eye(size(CBEMp.k_spatial{ii},1)),CBEMp.k_temporal{ii}(:,jj));
                     end
                     SpikeStim_c{ii} = [SpikeStim*B_s ones(TT,1)];
                 end
@@ -93,13 +93,13 @@ else
             nllFunc = @(Xvec) optimizationFunction(Xvec,CBEMp,CBEMtoOptimize,SpikeStim_c{1},spkHist,spikeTimes,ones(TT,1),SpikeStim_c{2},{[],[]});
 
             opts_grad = optimoptions('fminunc','Algorithm','quasi-newton','SpecifyObjectiveGradient',true,'Hessian','off','MaxIter',500,'Display','iter','FunctionTolerance',1e-6,'StepTolerance',1e-6);
-            opts = optimoptions('fminunc','Algorithm','trust-region','SpecifyObjectiveGradient',true,'Hessian','on','MaxIter',500,'Display','iter','FunctionTolerance',1e-8,'StepTolerance',1e-8);
+            opts = optimoptions('fminunc','Algorithm','trust-region','SpecifyObjectiveGradient',true,'Hessian','on','MaxIter',5,'Display','iter','FunctionTolerance',1e-8,'StepTolerance',1e-8);
 
             initPoint = cbemStructToVector(CBEMp,CBEMtoOptimize);
 
             %%
-            fprintf('Fitting with gradient only...\n');
-            initPoint = fminunc(nllFunc,initPoint,opts_grad);
+%             fprintf('Fitting with gradient only...\n');
+%             initPoint = fminunc(nllFunc,initPoint,opts_grad);
             fprintf('Continuing fit with Hessian...\n');
             [finalPoint,nll] = fminunc(nllFunc,initPoint,opts);
 
@@ -112,15 +112,18 @@ else
                 if(ff == 1)
                     %renormalizes for identifiability
                     spatial_rf  = reshape(CBEMp.k_s{ii}(1:end-1),[],CBEMp.stimFilterRank);
+                    temporal_rf = CBEMp.k_temporal{ii};
                     try 
                         d = chol(spatial_rf'*spatial_rf);
-                        CBEMp.k_temporal{ii} = CBEMp.k_temporal{ii}*d';
-                        CBEMp.k_spatial{ii}  = spatial_rf/d;
+                        temporal_rf2 = temporal_rf*d';
+                        spatial_rf2  = spatial_rf/d;
                     catch
                         sn =  max(1e-4,sqrt(sum(spatial_rf.^2,1)));
-                        CBEMp.k_temporal{ii} = CBEMp.k_temporal{ii}.*sn;
-                        CBEMp.k_spatial{ii}  = spatial_rf./sn;
+                        temporal_rf2 = temporal_rf.*sn;
+                        spatial_rf2 = spatial_rf./sn;
                     end
+                    CBEMp.k_temporal{ii} = temporal_rf2;
+                    CBEMp.k_spatial{ii}  = spatial_rf2;
                 elseif(ff == 2)
                     CBEMp.k_temporal{ii} = reshape(CBEMp.k_s{ii}(1:end-1),[],CBEMp.stimFilterRank);
                 end
