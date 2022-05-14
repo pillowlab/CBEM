@@ -23,7 +23,15 @@ Example Script
 -
 Open ``exampleScript.m`` to see it in action using a small simulated dataset
 
-## Reference
+Python code
+------------
+The pyCBEM code uses a Python + Jax implementation of the CBEM for retinal ganglion cells.
+The notebook "exampleCBEMfitting.ipynb" shows how to use this.
+
+## References
+
+- K. W. Latimer,  F. Rieke, & J. W. Pillow (2019)
+[Inferring synaptic inputs from spikes with a conductance-based neural encoding model](https://elifesciences.org/articles/47012) eLife 8 (2019): e47012.
 
 - K. W. Latimer, E. J. Chichilnisky, F. Rieke, & J. W. Pillow
  (2014).
