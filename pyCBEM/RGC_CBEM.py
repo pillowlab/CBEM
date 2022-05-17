@@ -15,25 +15,37 @@ from jax import random
 import math
 from pyCBEM import utils
 
+
+
 def getSimpleStimulusBasis(binSize_ms : float) -> tuple[np.ndarray, np.ndarray]:
     """
     A simple default basis to use for stimulus-dependent conductance filters made with a modified cardinal spline.
-    :param binSize_ms:          time bin size in milliseconds
 
-    : return (basis, time) :
-        basis: numpy.ndarray [BT_stim x P_stim] Each column is a basis vector
-        time:  numpy.ndarray [BT_stim] Time (in milliseconds) of the rows of the basis
+    Args:
+      binSize_ms: time bin size in milliseconds
+
+    Returns:
+      A tuple (basis, time)
+
+        basis: [BT_stim x P_stim] - Each column is a basis vector
+
+        time:  [BT_stim] - Time (in milliseconds) of the rows of the basis
     """
     return utils.ModifiedCardinalSpline(190, [0, 8, 16, 24, 32, 40, 48, 64, 96, 128, 160, 192], binSize_ms=binSize_ms, zero_last=False, zero_first=True);
     
 def getSimpleSpkHistBasis(binSize_ms : float) -> tuple[np.ndarray, np.ndarray]:
     """
     A simple default basis to use for spike history filters made with a modified cardinal spline.
-    :param binSize_ms:          time bin size in milliseconds
 
-    : return (basis, time) :
-        basis: numpy.ndarray [BT_hspk x P_hspk] Each column is a basis vector
-        time:  numpy.ndarray [BT_stim] Time (in milliseconds) of the rows of the basis
+    Args:
+      binSize_ms: time bin size in milliseconds
+
+    Returns:
+      A tuple (basis, time)
+
+        basis: [BT_hspk x P_hspk] - Each column is a basis vector
+
+        time:  [BT_stim] - Time (in milliseconds) of the rows of the basis
     """
     return utils.ModifiedCardinalSpline(190, [0, 1, 2, 4, 8, 16, 24, 32, 40, 48, 64, 96, 128, 160, 192], binSize_ms=binSize_ms, zero_last=False, zero_first=False);
     
@@ -47,15 +59,17 @@ class CBEM_basic:
     def __init__(self,  binSize_ms : float, basis_conductance : np.ndarray = None, basis_hspk : np.ndarray = None):
         """
         Initialize simple CBEM with one excitatory and one inhibitory conductance which share input.
-        :param binSize_ms:          time bin size in milliseconds
-        :param basis_conductance:   ndarray [BT_stim x P_stim] (default : getSimpleStimulusBasis(binSize_ms))
-                                    Each column is a basis function for the conductances (conductances share a basis).
-                                    The basis is assumed to be causal: basis_conductance[0,:] are the basis weights for the previous time bin.
-        :param basis_hspk:          nd array [BT_hspk x P_hspk] (default : getSimpleSpkHistBasis(binSize_ms))
-                                    Each column is a basis function for the spike history.
-                                    The basis is assumed to be causal: basis_conductance[0,:] are the basis weights for the previous time bin.
+        
+        Note: bases are orthogonalized before fitting. Filter parameters will be in terms of the orthogonalized basis.
 
-            Note: bases are orthogonalized before fitting. Filter parameters will be in terms of the orthogonalized basis.
+        Args:
+          binSize_ms:           time bin size in milliseconds
+          basis_conductance:    [BT_stim x P_stim], if None then getSimpleStimulusBasis(binSize_ms) -
+                                Each column is a basis function for the conductances (conductances share a basis).
+                                The basis is assumed to be causal: basis_conductance[0,:] are the basis weights for the previous time bin.
+          basis_hspk:           [BT_hspk x P_hspk], if None then getSimpleSpkHistBasis(binSize_ms) -
+                                Each column is a basis function for the spike history.
+                                The basis is assumed to be causal: basis_conductance[0,:] are the basis weights for the previous time bin.
         """
 
         # discretization size
@@ -93,14 +107,42 @@ class CBEM_basic:
         self._B_hspk  = None;
         self.N_pixels = 0;
 
+    # Properties for the model parameters
+    @property
+    def B_cond(self):
+        """jnp.ndarray: [(BT_stim + 1) x 2] - The conductance filters and baseline parameters."""
+        return self._B_cond;
+
+    @B_cond.setter
+    def B_cond(self, value : jnp.ndarray):
+        """Note: cannot change filter size"""
+        assert not (self._B_cond is None), "model filters not initialized"
+        assert value.shape == self._B_cond.shape, "Conductance filter is incorrect shape"
+        self._B_cond = value;
+
+    @property
+    def B_hspk(self):
+        """jnp.ndarray: [BT_hspk x 1] - The spike history filter parameters."""
+        return self._B_hspk;
+
+    @B_hspk.setter
+    def B_hspk(self, value : jnp.ndarray):
+        """Note: cannot change filter size"""
+        assert not (self._B_hspk is None), "model filters not initialized"
+        assert value.shape == self._B_hspk.shape, "Spike history filter is incorrect shape"
+        self._B_hspk = value;
+
+
     def setObservations(self, Stimulus : np.ndarray, spkTimes_bins : list[int], window : range) -> None:
         """
         Initializes the stimulus and spike train observation for this neuron.
         This assumes only one spike per bin is possible.
-        :param Stimulus:        numpy array [T_stim x number of pixels]. Pixels are treated independently
-        :param spkTimes_bins:   list of the spike times in bins.
-        :param window:          The window of stimulus and spikes to fit. This input allows you to cut out the first 
-                                part of the given spike train to avoid edge effects for spike history or stimulus.
+
+        Args:
+          Stimulus:         [T_stim x number of pixels] - Pixels are treated independently
+          spkTimes_bins:    List of the spike times in bins.
+          window:           The window of stimulus and spikes to fit. This input allows you to cut out the first 
+                            part of the given spike train to avoid edge effects for spike history or stimulus.
         """
         window = jnp.array(window);
         # get the conductance desgin matrix(same for both conductances)
@@ -124,11 +166,14 @@ class CBEM_basic:
         """
         Computes the conductances given the conductance filter parameters for the current stimulus.
         The conductance nonlinearity is a soft-rectifier.
-        :param B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
+
+        Args:
+          B_cond:   [(P_stim + 1) x 2], if None then self.get_B_cond() -
                         Parameters of the two conductance filters as weights on the basis functions. First column is excitatory, second inhibitory.
                         The last entry is the basline term.
         
-        :return gs:     jnp.ndarray [T_stim x 2] : first column is excitatory conductance, second inhibitory
+        Returns:
+          gs  [T_stim x 2] - first column is excitatory conductance, second inhibitory
         """
         if B_cond is None:
             B_cond = self._B_cond
@@ -140,11 +185,14 @@ class CBEM_basic:
     def getVoltage(self, B_cond : jnp.ndarray = None) -> jnp.ndarray:
         """
         Computes the voltage given the conductance parameters for the set stimulus.
-        :param B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
+        
+        Args:
+          B_cond:  [(P_stim + 1) x 2], if None then  self.get_B_cond() -
                         Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
                         The last entry is the basline term.
                         
-        :return V:     jnp.ndarray [T_stim] : the solved voltage in millivolts
+        Returns:
+          V [T_stim] - the solved voltage in millivolts
         """
         if B_cond is None:
             B_cond = self._B_cond
@@ -156,21 +204,27 @@ class CBEM_basic:
         """
         Computes the firing rate nonlinearity on the given total voltage.
         The nonlinearity is alpha * softplus((V_tot - mu)/beta)
-            - self.frNonlinearity holds the parameters alpha, beta, and mu
-        :param V_tot:       jnp.ndarray [T]. The total voltage terms.
-                            Total voltage is the membrane potential from the membrane potential equation plus spike history terms.
-                        
-        :return spikeRate:  jnp.ndarray [T] : the firing rate for each term in V_tot
+
+        - self.frNonlinearity holds the parameters alpha, beta, and mu
+
+        Args:
+          V_tot:    [T] - The total voltage terms.
+                    Total voltage is the membrane potential from the membrane potential equation plus spike history terms.
+
+        Returns:              
+          spikeRate [T] - the firing rate for each term in V_tot
         """
         return self.frNonlinearity["alpha"] * jax.nn.softplus((V_tot - self.frNonlinearity["mu"])/ self.frNonlinearity["beta"]);
 
     def getSpikeHistory(self, B_hspk : jnp.ndarray = None) -> jnp.ndarray:
         """
         Computes the spike history given the parameters for the set spike train. (A simple linear function)
-        :param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                        Parameters of the two spike historey filter as weights on the basis functions.
+
+        Args:
+          B_hspk:   [P_hspk x 1], if None then self.get_B_hspk() - Parameters of the spike history filter as weights on the basis functions.
                         
-        :return hspk:   jnp.ndarray [T_stim] : the linear spike history
+        Returns:
+          hspk  [T_stim] - the linear spike history
         """
         if B_hspk is None:
             B_hspk = self._B_hspk
@@ -181,13 +235,13 @@ class CBEM_basic:
     def getSpikeRate(self, B_cond  : jnp.ndarray = None, B_hspk  : jnp.ndarray = None) -> jnp.ndarray:
         """
         Computes the spike rate at each time given the conductance and spike history parameters for the set stimulus & spike history.
-        :param B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
-                        Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
-        :param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                        Parameters of the two spike historey filter as weights on the basis functions.
-                        The last entry is the basline term.
-                        
-        :return spikeRate:  jnp.ndarray [T_stim] : the firing rate in each bin in units of spikes/sec
+
+        Args:
+          B_cond:   [(P_stim + 1) x 2], if None then  self.get_B_cond() - Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
+          B_hspk:   [P_hspk x 1], if None then  self.get_B_hspk() - Parameters of the spike history filter as weights on the basis functions.
+
+        Returns            
+          spikeRate [T_stim] - the firing rate in each bin in units of spikes/sec
         """
         if B_cond is None:
             B_cond = self._B_cond
@@ -203,13 +257,13 @@ class CBEM_basic:
         Computes the log likelihood at each time bin given the conductance and spike history parameters for the set stimulus & spike history.
         This function uses a truncated Poisson likelihood. That is, Poisson(0 | rate) for bins without a spike and
                                                                  (1-Poisson(0 | rate)) for bins with a spike.
-        :param B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
-                        Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
-        :param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                        Parameters of the two spike historey filter as weights on the basis functions.
-                        The last entry is the basline term.
+
+        Args:
+          B_cond:   [(P_stim + 1) x 2], if None then self.get_B_cond() - Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
+          B_hspk:   [P_hspk x 1], if None then  self.get_B_hspk() - Parameters of the spike history filter as weights on the basis functions.
                         
-        :return ll_bins:  jnp.ndarray [T_stim] : the log likelihood of the observation (a spike or no spike) at each bin.
+        Returns:
+          ll_bins [T_stim] - the log likelihood of the observation (a spike or no spike) at each bin.
         """
         if B_cond is None:
             B_cond = self._B_cond
@@ -226,19 +280,17 @@ class CBEM_basic:
         Sets the parameters of the model using i.i.d. normal draws.
         All filter weights are drawn with mean 0.
 
-        :param offset_term_mean:  scalar (default : 10)
-                        Mean of the baseline term of the conductances. This probably should be positive.
-        :param std_cond:  scalar (default : 1)
-                        Standard deviation of the conductance parameters.
-        :param std_lin:  scalar (default : 1)
-                        Standard deviation of the spike history parameters.
+        Args:
+          offset_term_mean: Mean of the baseline term of the conductances. This probably should be positive.
+          std_cond:         Standard deviation of the conductance parameters.
+          std_lin:          Standard deviation of the spike history parameters.
                         
-        :return (B_cond, B_hspk):
-                    B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
-                        Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
-                    param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                        Parameters of the two spike historey filter as weights on the basis functions.
-                        The last entry is the basline term.
+        Returns:
+          A tuple (B_cond, B_hspk)
+
+            B_cond: [(P_stim + 1) x 2] - Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
+
+            B_hspk:  [P_hspk x 1] - Parameters of the spike history filter as weights on the basis functions.
         """
         assert not (self._B_cond is None), "model filters not initialized"
         self._B_hspk  = jnp.array(np.random.normal(size=self._B_hspk.shape)*std_cond);
@@ -250,13 +302,16 @@ class CBEM_basic:
     def vectorizeParameters(self, B_cond : jnp.ndarray = None, B_hspk : jnp.ndarray  = None) -> jnp.ndarray:
         """
         Flatens the parameters into a vector for optimization.
-        :param B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
-                        Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
-        :param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                        Parameters of the two spike historey filter as weights on the basis functions.
-                        The last entry is the basline term.
+
+        Args:
+          B_cond:   [(P_stim + 1) x 2], if None then self.B_cond -
+                    Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
+          B_hspk:   [P_hspk x 1], if None then self.B_hspk -
+                    Parameters of the spike history filter as weights on the basis functions.
+                    The last entry is the basline term.
                         
-        :return B : jnp.ndarray [(P_stim + 1) * 2 + P_hspk] Flattened B_cond and B_lin
+        Returns:
+          B [(P_stim + 1) * 2 + P_hspk] - Flattened B_cond and B_hspk
         """
         assert not (self._B_cond is None), "model filters not initialized"
         if B_cond is None:
@@ -268,14 +323,19 @@ class CBEM_basic:
     def devectorizeParameters(self, B : jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         """
         Takens in a vector of the parameters and returns them in more convenient separate, matrix forms.
-        :param B : jnp.ndarray [(P_stim + 1) * 2 + P_hspk] Flattened B_cond and B_lin.
-                    This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
+
+        Args:
+          B:  [(P_stim + 1) * 2 + P_hspk] - Flattened B_cond and B_hspk.
+                This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
         
-        :return (B_cond, B_hspk):
-            B_cond:  jnp.ndarray [(P_stim + 1) x 2] (default : self.get_B_cond())
+        Returns:
+          A tuple (B_cond, B_hspk)
+
+            B_cond: [(P_stim + 1) x 2] - 
                 Parameters of the two conductance filters as weights on the basis function. First column is excitatory, second inhibitory.
-            param B_lin:  jnp.ndarray [P_hspk x 1] (default : self.get_B_hspk())
-                Parameters of the two spike historey filter as weights on the basis functions.
+
+            B_hspk:  [P_hspk x 1] - 
+                Parameters of the spike history filter as weights on the basis functions.
                 The last entry is the basline term.
         """
         assert not (self._B_cond is None), "model filters not initialized"
@@ -285,38 +345,27 @@ class CBEM_basic:
     def setParametersFromVector(self, B : jnp.ndarray) -> None:
         """
         Sets the current parameters from a vectorized form.
-        :param B : jnp.ndarray [(P_stim + 1) * 2 + Phspk] Flattened B_cond and B_lin.
-                    This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
+
+        Args:
+          B:    [(P_stim + 1) * 2 + P_hspk] - Flattened B_cond and B_hspk.
+                This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
         """
         self._B_cond, self._B_hspk = self.devectorizeParameters(B)
 
-    """ Getter and setter methods for the B_cond and B_hspk parameters""" 
-    def set_B_cond(self, B_cond : jnp.ndarray = None) -> None:
-        if B_cond is None:
-            B_cond = self._B_cond
-        assert not (self._B_cond is None), "model filters not initialized"
-        assert B_cond.shape == self._B_cond.shape, "Conductance filter is incorrect shape"
-        self._B_cond = B_cond
-    def set_B_hspk(self, B_hspk : jnp.ndarray  = None) -> None:
-        if B_cond is None:
-            B_cond = self._B_hspk
-        assert not (self._B_hspk is None), "model filters not initialized"
-        assert B_hspk.shape == self._B_hspk.shape, "Linear filter is incorrect shape"
-        self._B_hspk = B_cond
-    def get_B_cond(self) -> jnp.ndarray:
-        return self._B_cond;
-    def get_B_hspk(self) -> jnp.ndarray:
-        return self._B_hspk;
+
 
     # Vectorized negative log likelihood functions for optimization
     def vectorizedNegLogLike(self, B : jnp.ndarray) -> jnp.ndarray:
         """
         Computes the negative log likelihood for the set stimulus and spike train.
         Takes in the parameters in a vectorized form for use with optimizers.
-        :param B : jnp.ndarray [(P_stim + 1) * 2 + P_hspk] Flattened B_cond and B_lin.
-                    This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
 
-        :return nll : scalar jnp.ndarray - the total negative log likelihood for the setup stimulus.
+        Args:
+          B:    [(P_stim + 1) * 2 + P_hspk] - Flattened B_cond and B_hspk.
+                This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
+
+        Returns:
+          nll [1] - The total negative log likelihood for the setup stimulus.
         """
         (B_cond, B_hspk) = self.devectorizeParameters(B);
         return -(self.getLogLike(B_cond, B_hspk).sum());
@@ -327,14 +376,16 @@ class CBEM_basic:
         Takes in the parameters in a vectorized form for use with optimizers.
         The penalty terms are the weighted squared norms of the conductance filters.
         
-        :param B : jnp.ndarray [(P_stim + 1) * 2 + P_hspk] Flattened B_cond and B_lin.
+        Args:
+          B: [(P_stim + 1) * 2 + P_hspk] - Flattened B_cond and B_hspk.
                     This should correspond to concatenate((B_cond.flatten(), B_hspk.flatten))
-        :param conductance_penalty : list [2]  (default : [1, 0.2])
+          conductance_penalty:  [2] -
                     The weights of the penalty on the squared norms of the filter weights.
                     The first term is for the excitatory and the second for the inhibitory.
                     The baseline conductance terms do not contribute to this penalty.
 
-        :return nll : scalar jnp.ndarray - the total negative log likelihood for the setup stimulus plus the penalties.
+        Returns:
+          nll [1] - The total negative log likelihood for the setup stimulus plus the penalties.
         """
         assert not (self._B_cond is None), "model filters not initialized"
         (B_cond, B_hspk) = self.devectorizeParameters(B);
@@ -346,9 +397,12 @@ class CBEM_basic:
     def getConductanceFilter(self, cc : int) -> jnp.ndarray:
         """
         Gets the full conductance filter (basis times weights) for one of the conductance filters.
-        :param cc:      int. Index of the conductance filter to return. 0 is excitatory, 1 is inhibitory
 
-        :return k_stim: jnp.ndarray [BT_stim x N_pixels]  The filter for each pixel.
+        Args:
+          cc: Index of the conductance filter to return. 0 is excitatory, 1 is inhibitory.
+
+        Returns:
+          k_stim [BT_stim x N_pixels] - The filter for each pixel.
         """
 
         assert not (self._B_cond is None), "model filters not initialized"
@@ -357,7 +411,9 @@ class CBEM_basic:
     def getSpikeHistoryFilter(self) -> jnp.ndarray:
         """
         Gets the full spike history filter (basis times weights).
-        :return h_spk: jnp.ndarray [BT_hspk x 1] 
+
+        Returns:
+          h_spk [BT_hspk x 1] - The full spike history filter.
         """
         assert not (self._B_cond is None), "model filters not initialized"
         return self.basis_hspk @ self._B_hspk;
@@ -368,11 +424,13 @@ class CBEM_basic:
         Simulates a set of spike trains with the currently set stimulus. This can be really slow!
         This function requires an initial set of spikes to avoid dealing with edge effects of the spike history filter.
 
-        :param Y_init:  np.ndarray [T_0 x (N or 1)] A matrix of ones and zerosThe initial spike trains. T_0 should be less than T_stim
-        :param N:       positive int (default : Y_init.shape[1]) The number of simulations: only use this if Y_init.shape[1] == 1 and you want more than one simulation.
-                                                                 If N > 1 and Y_init.shape[1] == 1, it uses the same initial spike train for all simulations.
+        Args:
+          Y_init:  [T_0 x (N or 1)] - A matrix of ones and zerosThe initial spike trains. T_0 should be less than T_stim
+          N:       (positive integer) - The number of simulations: only use this if Y_init.shape[1] == 1 and you want more than one simulation.
+                                             If N > 1 and Y_init.shape[1] == 1, it uses the same initial spike train for all simulations.
                                                                  
-        :return sps: jnp.ndarray [T_stim x N] A matrix of spikes for each of the N simulations. Spikes are either 1 or 0.
+        Returns:
+          sps [T_stim x N] - A matrix of spikes for each of the N simulations. Spikes are either 1 or 0.
         """
         assert not (self._B_cond is None), "model filters not initialized"
         Y_init = Y_init.reshape((Y_init.shape[0], -1));

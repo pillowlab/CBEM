@@ -6,7 +6,6 @@ Requires Jax for computations.
 
 Copyright (c) 2022 Kenneth Latimer
 """
-
 import numpy as np
 import jax.numpy as jnp
 import jax
@@ -16,14 +15,23 @@ from jax import custom_vjp
 ## The following utility functions are for a tridiagonal solving step in the voltage function that required manually adding autodiff
 @custom_vjp
 def solveVoltage_tridiag(M, C):
+    """
+    A tridiagonal solver utility to be called by 'getVoltage'.
+    """
     T = C.size
     return jax.lax.linalg.tridiagonal_solve(jnp.concatenate((jnp.zeros(1), M[:-1])), jnp.ones(T), jnp.zeros(T), C.reshape((T,1))).reshape((T));
     
 def solveVoltage_tridiag_fwd(M, C):
+    """
+    The Jax custom vjp forward function for solveVoltage_tridiag.
+    """
     V = solveVoltage_tridiag(M, C);
     return V, (V, M, C);
     
 def solveVoltage_tridiag_bwd(res, g):
+    """
+    The Jax custom vjp backward function for solveVoltage_tridiag.
+    """
     V, M, C = res # Gets residuals computed in solveVoltage_tridiag_fwd
     V2 = jnp.roll(V,1)
     V2 = V2.at[0].set(0);
@@ -40,14 +48,16 @@ def getVoltage(gs : jnp.ndarray, E_s : jnp.ndarray, g_l : float, E_l : float, V_
     """
     Computes the voltage given the synaptic and leak conductances.
    
-    :param gs:          jnp.ndarray [T x C]. Each column is the conductance value over time.
-    :param E_s:         list [C] Reversal potential for each conductance,
-    :param g_l:         scalar. Leak conductance.
-    :param E_l:         scalar. Leak reveral potential.
-    :param V_0:         scalar. Initial voltage (mV)
-    :param binSize_ms:  scalar. Time bin size in milliseconds.
+    Args:
+      gs:          [T x C] - Each column is the conductance value over time.
+      E_s:         [C] - Reversal potential for each conductance,
+      g_l:         Leak conductance.
+      E_l:         Leak reveral potential.
+      V_0:         Initial voltage (mV)
+      binSize_ms:  Time bin size in milliseconds.
 
-    :return jnp.ndarray [T]. Vector of the solved voltages (in mV).
+    Returns:
+      V [T] - Vector of the solved voltages (in mV).
     """
     I_tot = E_l * g_l + gs @ E_s;
     g_tot = g_l + gs.sum(axis=1);
@@ -72,17 +82,21 @@ def ModifiedCardinalSpline(window_end : float, c_pt : list[float], window_start 
         https://github.com/MehradSm/Modified-Spline-Regression
         by Mehrad Sarmashghi
 
-    :param window_end:      scalar. last time point (in ms)
-    :param c_pt:            list. Locations of the knots.
-    :param window_start:    scalar (default : binSize_ms) first time point (in ms)
-    :param s:               scalar (default : 0.5)  tension parameter
-    :param binSize_ms:      scalar (default : 1)  time bin size in milliseconds
-    :param zero_first:      bool (default : False) Whether to set the end point at c_pt[0 ] to 0's (removes basis)
-    :param zero_last:      bool (default : False) Whether to set the end point at c_pt[-1] to 0's (removes basis)
+    Args:
+      window_end:      Last time point (in ms)
+      c_pt:            Locations of the knots.
+      window_start:    First time point (in ms)
+      s:               Tension parameter
+      binSize_ms:      Time bin size in milliseconds
+      zero_first:      Whether to set the end point at c_pt[0 ] to 0's (removes basis)
+      zero_last:       Whether to set the end point at c_pt[-1] to 0's (removes basis)
 
-    : return (basis, time) :
-        basis: numpy.ndarray [BT_stim x P_stim] Each column is a basis vector
-        time:  numpy.ndarray [BT_stim] Time (in milliseconds) of the rows of the basis
+    Returns:
+      A tuple (basis, time)
+
+        basis: [BT_stim x P_stim] - Each column is a basis vector
+
+        time:  [BT_stim] - Time (in milliseconds) of the rows of the basis
     """
 
     if window_start is None:
@@ -157,16 +171,17 @@ def ModifiedCardinalSpline(window_end : float, c_pt : list[float], window_start 
 def convolveStimulusWithBasis(stimulus : np.ndarray, basis : np.ndarray, add_ones : bool = True, is_balanced : bool = False) -> jnp.ndarray:
     """
     Convolves a basis set with a set of input vectors.
-    :param stimulus:    ndarray [T x N_pixels] Each column is treated as a separate pixel.
-    :param basis:       ndarray [BT x P] Each column is a basis function.
-    :param add_ones:    bool (default : True)
-                        Adds an extra column of ones at the end of the basis convolution for an offset term.
-    :param is_balanced:    bool (default : False)
-                        If basis is balanced so that the convolution can be called with mode="same".
-                        If false, the basis is assumed to be causal.
 
-    :return X: numpy.ndarray [T x (N_pixels*P + add_ones)] X[:, 0:P] is X[:,0] convolved with the basis (repeats for each pixel)
-            Last column is ones if add_ones == true
+    Args:
+      stimulus:    [T x N_pixels] - Each column is treated as a separate pixel.
+      basis:       [BT x P] - Each column is a basis function.
+      add_ones:    If True, adds an extra column of ones at the end of the basis convolution for an offset term.
+      is_balanced: If basis is balanced so that the convolution can be called with mode="same".
+                        If False, the basis is assumed to be causal.
+
+    Returns: 
+      X [T x (N_pixels*P + add_ones)] - the columns X[:, 0:P] contain stimulus[:,0] convolved with the basis (repeats for each pixel)
+      Last column is ones if add_ones == True.
     """
     stimulus = jnp.array(stimulus);
     basis = jnp.array(basis);
@@ -188,18 +203,21 @@ def convolveStimulusWithBasis(stimulus : np.ndarray, basis : np.ndarray, add_one
 def convolveSpksWithBasis(spkTimes_bins : list[int], basis : np.ndarray, T_max : int, add_ones : bool = False, is_balanced : bool = False) -> tuple[jnp.ndarray, np.ndarray]:
     """
     Convolves a basis set with a set of spike times.
-    :param spk times:   list. Spike times in bins
-    :param basis:       ndarray [BT x P] Each column is a basis function.
-    :param add_ones:    bool (default : False)
-                        Adds an extra column of ones at the end of the basis convolution for an offset term.
-    :param is_balanced:    bool (default : False)
-                        If basis is balanced so that the convolution can be called with mode="same".
-                        If false, the basis is assumed to be causal.
 
-    :return (X, Y):
-        X: numpy.ndarray [T x (N_pixels*P + add_ones)] X[:, 0:P] is X[:,0] convolved with the basis (repeats for each pixel)
-            Last column is ones if add_ones == true
-        Y: numpy.ndarray [T] Vectorized spike time vector. Bins are 0's or 1's to indicate whether a spike happened or not in each bin.
+    Args:
+      spk times:   Spike times in bins
+      basis:       [BT x P] - Each column is a basis function.
+      add_ones:    If True, adds an extra column of ones at the end of the basis convolution for an offset term.
+      is_balanced: If basis is balanced so that the convolution can be called with mode="same".
+                        If False, the basis is assumed to be causal.
+
+    Returns:
+      A tuple (X, Y)
+
+        X: [T x (N_pixels*P + add_ones)] - the columns X[:, 0:P] contain Y convolved with the basis (repeats for each pixel)
+           Last column is ones if add_ones == True.
+
+        Y: [T] - Vectorized spike time vector. Bins are 0's or 1's to indicate whether a spike happened or not in each bin.
     """
     # vectorizes spike times and convolves with basis
     X = np.zeros(T_max);
