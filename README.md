@@ -18,7 +18,7 @@ Downloading the repository
   and then unzip archive
 
 
-Example Script
+Example Matlab Script
 -
 Open ``exampleScript.m`` to see it in action using a small simulated dataset
 
