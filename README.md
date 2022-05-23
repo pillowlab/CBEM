@@ -3,8 +3,8 @@ CBEM
 
 Code to fit spike trains with the Conductance-based encoding model.
 
-This MATLAB code is a reference implementation for the analyses found
-in [Latimer et al. 2014](http://pillowlab.princeton.edu/pubs/Latimer_conductancePointProc_NIPS14.pdf).
+Contains both Python and MATLAB implementations of the analyses
+found in [Latimer et al. 2014](http://pillowlab.princeton.edu/pubs/Latimer_conductancePointProc_NIPS14.pdf).
 
 
 Downloading the repository
